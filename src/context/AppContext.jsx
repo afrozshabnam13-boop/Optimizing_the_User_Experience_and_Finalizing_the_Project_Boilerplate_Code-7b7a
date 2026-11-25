@@ -13,6 +13,7 @@ import { MAX_CHAT_HISTORY, FILTER_WORDS } from '../constants';
 // (no stub needed — just add the import above)
 // ──────────────────── END ─────────────────────────
 
+import { extractTitles } from '../utils/textParser';
 
 const AppContext = createContext(null);
 
@@ -126,9 +127,84 @@ export function AppProvider({ children }) {
   //   4. Return { reply, movieResults, hasAgeSwitchOffer }
   // ──────────────────── STUBS: delete after adding real code ────────────────
   const callAIWithSearch = useCallback(async (userMessage) => {
-    const reply = await callAI(userMessage);
-    return { reply: reply || '', movieResults: [], hasAgeSwitchOffer: false };
+
+    const rawReply = await callAI(userMessage);
+
+    if (!rawReply) return { reply: '', movieResults: [], hasAgeSwitchOffer: false };
+
+    const hasAgeSwitchOffer = rawReply.includes('AGE_SWITCH_OFFER');
+
+    const cleanReply = rawReply.replace(/AGE_SWITCH_OFFER/g, '').trim();
+
+    const currentAge = userAgeRef.current;
+
+    const allowedRatings = {
+
+      [AGE.KIDS]: ['G', 'PG'],
+
+      [AGE.TEEN]: ['G', 'PG', 'PG-13'],
+
+      [AGE.ADULT]: ['G', 'PG', 'PG-13', 'R', 'NC-17', 'NR', 'N/A', 'NOT RATED', 'UNRATED', 'TV-G', 'TV-PG', 'TV-14', 'TV-MA'],
+
+    };
+
+    const allowed = allowedRatings[currentAge] || allowedRatings[AGE.ADULT];
+
+    const isAgeOk = m => !m.Rated || m.Rated === 'N/A'
+
+      ? currentAge !== AGE.KIDS
+
+      : allowed.some(r => m.Rated.toUpperCase().includes(r));
+
+    const titles = extractTitles(rawReply);
+
+    let movieResults = [];
+
+    if (titles.length) {
+
+      try {
+
+        const searches = await Promise.all(titles.slice(0, 6).map(t => omdbSearch(t).catch(() => [])));
+
+        const seen = new Set();
+
+        searches.forEach(results => {
+
+          const best = results.find(m => m.Poster && m.Poster !== 'N/A' && isAgeOk(m)) || results.find(m => isAgeOk(m));
+
+          if (best && !seen.has(best.imdbID)) { seen.add(best.imdbID); movieResults.push(best); }
+
+        });
+
+        movieResults = movieResults.slice(0, 6);
+
+      } catch { /* chat still works fine */ }
+
+    }
+
+    if (!movieResults.length && !titles.length) {
+
+      try {
+
+        const fallback = await omdbSearch(userMessage).catch(() => []);
+
+        const seen = new Set();
+
+        fallback.filter(m => isAgeOk(m)).slice(0, 4).forEach(m => {
+
+          if (!seen.has(m.imdbID)) { seen.add(m.imdbID); movieResults.push(m); }
+
+        });
+
+      } catch { /* ok */ }
+
+    }
+
+    return { reply: cleanReply, movieResults, hasAgeSwitchOffer };
+
   }, [callAI]);
+  
+    
   // ──────────────────── END ─────────────────────────
 
 
@@ -141,6 +217,7 @@ export function AppProvider({ children }) {
     isBotTyping, setIsBotTyping, resetChat,
     searchForStrip, selectedMovie, showModal, setShowModal, openMovie,
     callAI, callAIWithSearch, switchAge, isRestricted,
+    selectedMovie, showModal, setShowModal, openMovie,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

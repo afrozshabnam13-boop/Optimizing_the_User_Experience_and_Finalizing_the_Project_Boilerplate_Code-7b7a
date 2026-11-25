@@ -299,71 +299,39 @@ export default function ChatPage() {
   // ──────────────────── STUBS: delete after adding real code ────────────────
   
   // ──────────────────── END ─────────────────────────
-function render (msg){
-  return <ChatRow key={msg.id} msg={msg} onMovieClick={null} />;
 
- return (
-            <div className ="chat-page" >        
-            <div className="chat-header-bar">
-            <div className="chat-bot-avatar"><i className="bi bi-stars" /></div>
-            <div>
-              <div className="chat-bot-name">CineBot</div>
-              <div className="ai-status"><span className="ai-status-dot" />Your AI Movie Guide</div>
-            </div>
-            </div>
-          
-        
-        <div className="d-flex align-items-center gap-2">
-          {stage === STAGE.CHAT && (
-            <div className="age-mode-bar">
-              {[[AGE.KIDS,'🔥','Trending'],[AGE.TEEN,'🎞️','Nostalgic'],[AGE.ADULT,'⭐','Popular']].map(([key, emoji, label]) => (
-                <button key={key}
-                  className={`age-mode-btn ${userAge === key ? `active active-${key}` : ''}`}
-                  onClick={() => switchAge(key)}>
-                  <span className="age-emoji">{emoji}</span>
-                  <span className="age-label">{label}</span>
-                </button>
-              ))}
-            </div>
-          )}
-          <button className="search-icon-btn" onClick={() => setShowSearch(true)}
-            aria-label="Search movies" title="Search movies">
-            <i className="bi bi-search" />
-          </button>
-          <span className="live-pill"><span className="live-dot" />Live AI</span>
-        </div>
-      
+  function renderMsg(msg) {
 
-      <div className="chat-messages-area">
-        {chatMsgs.map(renderMsg)}
-        {isBotTyping && <TypingDots />}
-        <div ref={msgsEndRef} />
-      </div>
+    return (
 
-      {stage === STAGE.CHAT && !isBotTyping && (
-        <div className="chat-chips">
-          {Object.keys(CHIPS).map(c => (
-            <button key={c} className="ai-suggestion-chip" onClick={() => handleChip(c)}>{c}</button>
-          ))}
-        </div>
-      )}
+      <ChatRow key={msg.id} msg={msg} onMovieClick={async title => {
 
-      <div className="chat-input-bar">
-        <input type="text" className="chat-text-input"
-          placeholder={placeholder} value={inputVal}
-          disabled={!inputActive || isBotTyping}
-          onChange={e => setInputVal(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleSend()}
-          autoComplete="off" />
-        <button className="send-btn" onClick={handleSend}
-          disabled={!inputActive || isBotTyping || !inputVal.trim()}
-          aria-label="Send">
-          <i className="bi bi-send-fill" />
-        </button>
-      </div>
+        addMsg('user', `Tell me more about "${title}"`);
 
-      {showSearch && <SearchModal onClose={() => setShowSearch(false)} />}
+        setInputActive(false); setIsBotTyping(true);
 
-    </div>
+        try {
+
+          const [ai, direct] = await Promise.all([
+
+            callAIWithSearch(`Tell me about "${title}" — description, why it's great, and 2 similar recommendations.`),
+
+            searchForStrip(title).catch(() => []),
+
+          ]);
+
+          addMsg('bot', ai.reply || `"${title}" is a great pick!`);
+
+          const strip = ai.movieResults?.length ? ai.movieResults : direct.slice(0, 6);
+
+          if (strip.length) addMsg('bot', { type: 'movie-strip', movies: strip });
+
+        } catch { addMsg('bot', `Let me find "${title}" for you!`); }
+
+        finally { setIsBotTyping(false); setInputActive(true); }
+
+      }} />
+
     );
+
   }
